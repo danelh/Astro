@@ -1,9 +1,16 @@
+import json
+import os
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
 import numpy
 from astropy.coordinates import get_sun, get_moon
 from astropy.time import Time
+import matplotlib.pyplot as plt
 
 SYNODIC_MONTH = 29.530588
+DATA_FOLDER = "data"
 
 def arc_angle_to_decimal_angle(x):
     sign, d, m, s = x.signed_dms
@@ -36,14 +43,59 @@ def get_elongations(start_time, duration_years, resulation_minutes=60):
     elongations = [arc_angle_to_decimal_angle(x) % 360 for x in raw_elongations]
     return elongations
 
+def get_frequency_from_elongations(elongations):
+    freq = [0] * 360
+    for elongation in elongations:
+        freq[round(elongation) % 360] += 1 # in case the angle is 360 we want 0
+
+    return [float(x) / len(elongations) for x in freq]
+
+def save_array(arr, file_name):
+    txt = json.dumps(arr)
+    f = open(file_name, mode="w+")
+    f.write(txt)
+    f.close()
+
+def load_data():
+    files = ["{}/{}".format(DATA_FOLDER, x) for x in os.listdir(DATA_FOLDER) if x.endswith(".txt")]
+    freqs = []
+    for file in files:
+        f = open(file, mode="r")
+        freqs.append(json.loads(f.read()))
+
+    return freqs
+
+
+def display_freq(freq):
+
+    freq = [x - 1.0/len(freq) for x in freq]
+    plt.bar(range(len(freq)), freq)
+    plt.title('Elongation Frequency')
+    plt.xlabel('Elongation')
+    plt.ylabel('Frequency')
+    plt.show()
+
+metonic_cycles_in_one_unit = 1
+minute_resolution = 20
 
 initial_time = datetime(year=1971, month=1, day=1)
 # randomly using Metonic cycle as our time unit. duration for each run.
-start_times = [initial_time + i*timedelta(days=SYNODIC_MONTH*235.0*4) for i in range(20)]
+start_times = [initial_time + i*timedelta(days=SYNODIC_MONTH*235.0*metonic_cycles_in_one_unit) for i in range(2)]
 
 
 for start_time in start_times:
-    mean_elongation_in_cycle = get_mean_elongation(start_time, 19.01*4, 400)
-    print (mean_elongation_in_cycle)
+    print ("in time:{}".format(start_time))
+    # mean_elongation_in_cycle = get_mean_elongation(start_time, 19.01*4, 400)
+    # print (mean_elongation_in_cycle)
+    file_name = "{}/{}_{}_{}.txt".format(DATA_FOLDER, start_time.strftime("%Y%m%d"),
+                                       metonic_cycles_in_one_unit, minute_resolution)
+    if Path(file_name).exists():
+        print ("this file already exists. hence skip")
+        continue
+    cycle_elongation = get_elongations(start_time, 19.001*metonic_cycles_in_one_unit, minute_resolution)
+    freq = get_frequency_from_elongations(cycle_elongation)
+    save_array(freq, file_name)
 
-
+# freqs = load_data()
+# display_freq(freqs[0])
+# display_freq(freqs[1])
